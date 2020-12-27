@@ -11,8 +11,28 @@ import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.coroutineContext
 
 /**
- * todo nice summary of high level ideas
+ * Class that provides the non-blocking synchronized operation described in the paper
+ * Pragmatic Primitives for Non-blocking Data Structures by Trevor Brown, Faith Ellen, and Eric Ruppert
+ *
+ * Also I had an idea for a little twist on the helper function to improve the asymptotic performance
+ * of the helper function by distributing the state writing across threads rather than duplicating
+ * effort.
+ *
+ * The high level idea of these operations is that you do some number of LLXs on Data Records, optionally
+ * VLXs on some subset of those records, then optionally an SCX on some subset of those records, finalizing
+ * some number of them and modifying one of them; the SCX will only succeed if those Data Records have not been changed
+ * or finalized in between the LLX(s) you did and the SCX. The utility of this being that when you make non-blocking
+ * data structures you often want to change a record in a way that invalidates some number of "downstream" records
+ * and it's necessary that the change and the invalidation of the associated "downstream" records be atomic with
+ * respect to other "threads".
+ *
+ * This implementation is in Kotlin and makes use of Kotlin coroutines, so the "threads" are in fact user mode
+ * threads rather than OS threads. To support this mode of execution the supporting thread level tables are stored
+ * in the coroutine context, to initialize these you can use the helper function executeLinkedOperations to execute
+ * blocks of LLX, VLX, SCX operations.
+ *
  * @copyright Doordash Inc 2020
+ * @author Joshua Hight
  */
 @ExperimentalStdlibApi
 class DataRecord(
@@ -123,53 +143,6 @@ class DataRecord(
 
     companion object {
 
-        /**
-         * word of caution, the asymptotic performance is O(n) where n is the number of LLXs
-         * performed by the given coroutine context, so you probably want start a coroutine context
-         * for every logical division of LLX, VLX, and SCX operations, to avoid iterating through
-         * LlxRecords that you know will no longer be required for further VLX or SCX operations
-         * for the forseeable future (LLX is not super expensive, better to err on the side of reloading
-         * rather than accumulating a bunch of LlxRecords in your coroutine context)
-         */
-        suspend inline fun loadLinkExtended(record: DataRecord): LoadLinkResult {
-            val marked1 = record.marked
-            val recordInfo = record.info.get()
-            val state = recordInfo.state
-            // special case of the mean value theorem for monotonically increasing values
-            // gets super cool right here
-            val marked2 = record.marked
-
-
-            if (
-                state == ScxRecord.ScxState.ABORTED || (state == ScxRecord.ScxState.COMMITTED && !marked2)
-            ) {
-                val localMutableFields =
-                    AtomicReferenceArray(
-                        Array(record.mutableFields.length()) { idx -> record.mutableFields.get(idx) } )
-
-                if (record.info.get() === recordInfo) {
-                    (
-                        coroutineContext[LocalLlxTableElement] ?: throw NakedOperationException()
-                        ).llxRecords[record] =
-                        LlxRecord(recordInfo, Array(localMutableFields.length()) { localMutableFields.get(it) })
-
-                    return LoadLinkResult.Success(localMutableFields)
-                }
-            }
-
-            return if (
-                (
-                    recordInfo.state == ScxRecord.ScxState.COMMITTED ||
-                        (recordInfo.state == ScxRecord.ScxState.IN_PROGRESS && originalHelp(recordInfo))
-                    ) &&
-                marked1
-            ) {
-                LoadLinkResult.Finalized
-            } else {
-                LoadLinkResult.Fail
-            }
-        }
-
         private fun getNewTableContext(): CoroutineContext {
             return LocalLlxTableElement()
         }
@@ -180,163 +153,8 @@ class DataRecord(
             } ?: getNewTableContext()
         }
 
-        public suspend fun<T> executeLinkedOperations(block: suspend() -> T): T {
-            return withContext(appropriateTableContents()) {block()}
-        }
-
-        fun tooManyCooksInTheKitchen(myHelperNumber: Int, threadsHelping: AtomicInteger): Boolean {
-            return myHelperNumber > threadsHelping.get().takeHighestOneBit()
-        }
-
-        /**
-         * for the first iteration you should specify -myHelperNumber (where myHelperNumber is 1-based) as prevIndex
-         */
-        private fun nextIndex(prevIndex: Int, numThreadsHelping: Int): Int {
-            // idk this might actually be right? update after thinking: it definitely is not, however there's another
-            // simple-ish function that should do the trick
-            // todo rigorously determine this works in all cases
-            return prevIndex + numThreadsHelping
-        }
-
-        fun originalHelp(
-            scxRecord: ScxRecord
-        ): Boolean {
-
-            (scxRecord.affectedRecords.indices).forEach { idx ->
-                // not the most descriptive variable names, copying from Trevor Brown's pseudocode
-                // for a different type of clarity
-                // yes, there's an unsafe cast here, I am operating under the assumption that someone
-                // using a synchronized primitive more complicated than CAS is a grownup
-                // and doesn't need me to hold their hand
-                val rinfo = scxRecord.infoFields.getOrNull(idx) as ScxRecord?
-                val r = scxRecord.affectedRecords[idx]
-
-                if (!r.info.compareAndSet(rinfo, scxRecord)) {
-                    if (r.info.get() !== scxRecord) {
-                        // lifting out return here would be weird because of the state change done in the else branch
-                        // makes this logic look more functional than it actually is
-                        @Suppress("LiftReturnOrAssignment")
-                        if (scxRecord.allFrozen) {
-                            return true
-                        } else {
-                            scxRecord.state = ScxRecord.ScxState.ABORTED
-                            return false
-                        }
-                    }
-                }
-            }
-
-            scxRecord.allFrozen = true
-
-            scxRecord.recordsToFinalize.forEach { record -> record.marked = true }
-
-            scxRecord.recordToModify?.mutableFields?.compareAndExchange(scxRecord.fieldToModify, scxRecord.oldValue, scxRecord.newValue)
-
-            scxRecord.state = ScxRecord.ScxState.COMMITTED
-            return true
-        }
-
-
-        suspend fun help(
-            scxRecord: ScxRecord
-        ): Boolean {
-            // todo this is the meat of the function and also the place I think I
-            //  have a fun twist on the cooperative multithreading approach
-            //  described in the paper that I believe adds a fairly significant progress property
-
-            // super early exit to cut down on unnecessary administration overhead
-            if (scxRecord.allFrozen) {
-                return true
-            }
-
-            val myHelperNumber = scxRecord.threadsHelping.getAndIncrement()
-            try {
-
-                while (tooManyCooksInTheKitchen(
-                        myHelperNumber,
-                        scxRecord.threadsHelping
-                    )
-                ) {
-                    delay(1)
-                }
-
-                // todo so the idea is to have another loop outside the one to "freeze" all the affectedRecords
-                // by setting their SCX record. This outer loop will be driven by a hashmap of booleans indicating
-                // whether or not the given helperNumber has completed with an additional check for allFrozen,
-                // the behavior of the loop will be to take the offensive by picking a random helperNumber,
-                // then scanning to the right until they encounter one that isn't done yet
-                // (according to the hashmap of booleans), then writing backwards until we encounter a CAS failure
-                // due meeting the other thread in the middle. Then we loop back round and do it again until
-                // we have finished all the work for all the threads. We determine that we're done working either
-                // by consulting allFrozen or doing one read of the count (this one can be an estimate) then reading
-                // all the entries in the hashmap up to that count, then another read of the count(cannot be an estimate).
-                // then if the two counts are equal and all the booleans up to that count are set to true we know
-                // that we can safely set allFrozen
-
-                // freeze all data records affected by this scx to protect
-                // their mutable fields while this scx is going on
-                var idx = myHelperNumber * -1
-                while (idx < scxRecord.affectedRecords.size) {
-                    // todo do stuff to affected records
-                    val expectedRecordInfo = scxRecord.infoFields[idx]
-
-                    val record = scxRecord.affectedRecords[idx]
-
-                    @Suppress("UNCHECKED_CAST")
-                    val successfulSwap = record.info.compareAndSet(expectedRecordInfo, scxRecord)
-
-                    if (!successfulSwap) {
-                        if (record.info.get() !== scxRecord) {
-                            // if we get here it's not a contention fail with another
-                            // helper thread, it's genuine fail due to a conflict (unless I'm way behind and
-                        }
-                    }
-
-                    idx = nextIndex(idx, scxRecord.threadsHelping.get())
-                }
-
-
-                // todo actual return values
-                return false
-
-            } finally {
-                scxRecord.threadsHelping.decrementAndGet()
-            }
-        }
-
-        /**
-         *
-         */
-        suspend fun storeConditionalExtended(
-            affectedRecords: List<DataRecord>,
-            recordsToFinalize: List<DataRecord>,
-            recordToModify: DataRecord,
-            fieldToModify: Int,
-            newValue: MutableFieldsHolder
-        ): Boolean {
-            val llxRecordsTable = coroutineContext[LocalLlxTableElement]
-
-            val infoFields = affectedRecords.map {
-                llxRecordsTable?.llxRecords?.get(it)?.infoField ?: throw UnlinkedScxException()
-            }
-            val oldFieldToModifyValue =
-                llxRecordsTable?.get(LocalLlxTableElement)?.llxRecords?.get(recordToModify)?.let {
-                    @Suppress("UNCHECKED_CAST")
-                    it.snapshotOfMutableFields[fieldToModify]
-
-                } ?: throw UnlinkedScxException()
-
-            return originalHelp(
-                ScxRecord(
-                    affectedRecords = affectedRecords,
-                    recordsToFinalize = recordsToFinalize,
-                    recordToModify = recordToModify,
-                    fieldToModify = fieldToModify,
-                    newValue = newValue,
-                    oldValue = oldFieldToModifyValue,
-                    infoFields = infoFields
-                )
-            )
+        public suspend fun <T> executeLinkedOperations(block: suspend () -> T): T {
+            return withContext(appropriateTableContents()) { block() }
         }
     }
 }
