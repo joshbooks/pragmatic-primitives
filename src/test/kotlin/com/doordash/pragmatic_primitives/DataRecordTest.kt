@@ -30,7 +30,7 @@ class DataRecordTest {
         val llResult =
             runBlocking {
                 executeLinkedOperations {
-                    testRecord.loadLinkExtended(testRecord)
+                    DataRecord.loadLinkExtended(testRecord)
                 }
             }
 
@@ -49,7 +49,7 @@ class DataRecordTest {
         val llResult =
             runBlocking {
                 executeLinkedOperations {
-                    testRecord.loadLinkExtended(testRecord)
+                    DataRecord.loadLinkExtended(testRecord)
 
                     storeConditionalExtended(
                         listOf(testRecord),
@@ -58,7 +58,7 @@ class DataRecordTest {
                         1,
                         MutableInt(1337)
                     )
-                    testRecord.loadLinkExtended(testRecord)
+                    DataRecord.loadLinkExtended(testRecord)
                 }
             }
 

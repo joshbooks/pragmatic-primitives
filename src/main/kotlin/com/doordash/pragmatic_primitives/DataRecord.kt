@@ -111,53 +111,6 @@ class DataRecord(
         data class Success<M4>(val snapshot: M4): LoadLinkResult()
     }
 
-    /**
-     * word of caution, the asymptotic performance is O(n) where n is the number of LLXs
-     * performed by the given coroutine context, so you probably want start a coroutine context
-     * for every logical division of LLX, VLX, and SCX operations, to avoid iterating through
-     * LlxRecords that you know will no longer be required for further VLX or SCX operations
-     * for the forseeable future (LLX is not super expensive, better to err on the side of reloading
-     * rather than accumulating a bunch of LlxRecords in your coroutine context)
-     */
-    suspend inline fun loadLinkExtended(record: DataRecord): LoadLinkResult {
-        val marked1 = record.marked
-        val recordInfo = record.info.get()
-        val state = recordInfo.state
-        // special case of the mean value theorem for monotonically increasing values
-        // gets super cool right here
-        val marked2 = record.marked
-
-
-        if (
-            state == ScxRecord.ScxState.ABORTED || (state == ScxRecord.ScxState.COMMITTED && !marked2)
-        ) {
-            val localMutableFields =
-                AtomicReferenceArray(
-                    Array(record.mutableFields.length()) { idx -> record.mutableFields.get(idx) } )
-
-            if (record.info.get() === recordInfo) {
-                @Suppress("UNCHECKED_CAST")
-                (
-                    coroutineContext[LocalLlxTableElement] ?: throw NakedOperationException()
-                    ).llxRecords[record] =
-                        LlxRecord(recordInfo, Array(localMutableFields.length()) { localMutableFields.get(it) })
-
-                return LoadLinkResult.Success(localMutableFields)
-            }
-        }
-
-        return if (
-            (
-                recordInfo.state == ScxRecord.ScxState.COMMITTED ||
-                    (recordInfo.state == ScxRecord.ScxState.IN_PROGRESS && originalHelp(recordInfo))
-                ) &&
-            marked1
-        ) {
-            LoadLinkResult.Finalized
-        } else {
-            LoadLinkResult.Fail
-        }
-    }
 
     class LocalLlxTableElement(
         val llxRecords: MutableMap<DataRecord, LlxRecord> = mutableMapOf()
@@ -169,6 +122,53 @@ class DataRecord(
     }
 
     companion object {
+
+        /**
+         * word of caution, the asymptotic performance is O(n) where n is the number of LLXs
+         * performed by the given coroutine context, so you probably want start a coroutine context
+         * for every logical division of LLX, VLX, and SCX operations, to avoid iterating through
+         * LlxRecords that you know will no longer be required for further VLX or SCX operations
+         * for the forseeable future (LLX is not super expensive, better to err on the side of reloading
+         * rather than accumulating a bunch of LlxRecords in your coroutine context)
+         */
+        suspend inline fun loadLinkExtended(record: DataRecord): LoadLinkResult {
+            val marked1 = record.marked
+            val recordInfo = record.info.get()
+            val state = recordInfo.state
+            // special case of the mean value theorem for monotonically increasing values
+            // gets super cool right here
+            val marked2 = record.marked
+
+
+            if (
+                state == ScxRecord.ScxState.ABORTED || (state == ScxRecord.ScxState.COMMITTED && !marked2)
+            ) {
+                val localMutableFields =
+                    AtomicReferenceArray(
+                        Array(record.mutableFields.length()) { idx -> record.mutableFields.get(idx) } )
+
+                if (record.info.get() === recordInfo) {
+                    (
+                        coroutineContext[LocalLlxTableElement] ?: throw NakedOperationException()
+                        ).llxRecords[record] =
+                        LlxRecord(recordInfo, Array(localMutableFields.length()) { localMutableFields.get(it) })
+
+                    return LoadLinkResult.Success(localMutableFields)
+                }
+            }
+
+            return if (
+                (
+                    recordInfo.state == ScxRecord.ScxState.COMMITTED ||
+                        (recordInfo.state == ScxRecord.ScxState.IN_PROGRESS && originalHelp(recordInfo))
+                    ) &&
+                marked1
+            ) {
+                LoadLinkResult.Finalized
+            } else {
+                LoadLinkResult.Fail
+            }
+        }
 
         private fun getNewTableContext(): CoroutineContext {
             return LocalLlxTableElement()
