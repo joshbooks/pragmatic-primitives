@@ -1,0 +1,23 @@
+possible [marked, state] transitions, where marked is the boolean field on a
+data record and state is the state field of the scx record pointed to by the
+info field of that data record (Fig. 3 in paper)
+
+        +
+        |
+        v
++-------+--------+               +-----------------+
+|     Unmarked   |               |     Unmarked    |
++----------------+               +-----------------+
+|     Aborted    |               |    Committed    |
++-------+--------+               +----+------------+
+        |  ^----------+      +-----^  |
+        |             |      |        |
+        |             |      |        |
+        |             |      |        |
+        |             |      |        |
+        +----------v  |      |   v----+
+                 +----+------+----+                  +------------------+                  +--------------------+
+                 |     Unmarked   |                  |      Marked      |                  |      Marked        |
+                 +----------------+                  +------------------+                  +--------------------+
+                 |   InProgress   +----------------->+    InProgress    +----------------->+     Committed      |
+                 +----------------+                  +------------------+                  +--------------------+
