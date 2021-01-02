@@ -1,4 +1,4 @@
-Possible [state, allFrozen] field transitions of an SCX record (Fig 1. in paper)
+Possible [state, allFrozen] field transitions of an SCX record (Fig 2. in paper)
 
                   Freezing
                   CAS
