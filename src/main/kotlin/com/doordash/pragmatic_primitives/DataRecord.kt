@@ -1,9 +1,6 @@
 package com.doordash.pragmatic_primitives
 
-import com.doordash.pragmatic_primitives.exceptions.NakedOperationException
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import com.doordash.pragmatic_primitives.exceptions.UnlinkedScxException
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.atomic.AtomicReferenceArray
@@ -39,17 +36,6 @@ class DataRecord(
     public val mutableFields: AtomicReferenceArray<MutableFieldsHolder>,
     public val immutableFields: ImmutableFieldsHolder
 ) {
-
-    private val defaultBarrierInfoValue =
-        ScxRecord(
-            affectedRecords = emptyList(),
-            recordsToFinalize = emptyList(),
-            recordToModify = null,
-            fieldToModify = -1, // if this is unset recordToModify better be too, todo doc that
-            newValue = null,
-            oldValue = null,
-            infoFields = emptyList()
-        )
 
     var info: AtomicReference<ScxRecord> = AtomicReference(defaultBarrierInfoValue)
 
@@ -142,6 +128,16 @@ class DataRecord(
     }
 
     companion object {
+        val defaultBarrierInfoValue =
+            ScxRecord(
+                affectedRecords = emptyList(),
+                recordsToFinalize = emptyList(),
+                recordToModify = null,
+                fieldToModify = -1, // if this is unset recordToModify better be too, todo doc that
+                newValue = null,
+                oldValue = null,
+                infoFields = emptyList()
+            )
 
         private fun getNewTableContext(): CoroutineContext {
             return LocalLlxTableElement()

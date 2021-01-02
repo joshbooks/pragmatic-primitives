@@ -1,14 +1,53 @@
 package com.doordash.pragmatic_primitives.helper
 
 import com.doordash.pragmatic_primitives.DataRecord
+import com.doordash.pragmatic_primitives.test_fixtures.DataRecordFixtures.provideBasicDataRecord
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert
+import org.junit.Test
 
 @ExperimentalStdlibApi
-class StateGraphTests {
+class StateGraphTests: BaseHelperTest() {
 
-    fun casScxRecord(record: DataRecord, oldScxRecord: DataRecord.ScxRecord, newScxRecord: DataRecord.ScxRecord) {
-        record.info.compareAndExchange(oldScxRecord, newScxRecord)
+    fun casScxRecord(
+        record: DataRecord,
+        oldScxRecord: DataRecord.ScxRecord,
+        newScxRecord: DataRecord.ScxRecord
+    ): Boolean {
+        return record.info.compareAndSet(oldScxRecord, newScxRecord)
     }
 
+    @Test
+    fun testSingleLlxIntersectingWithOneFinalizingScx() {
+        val dataRecord = provideBasicDataRecord()
+        val scxRecord =
+            DataRecord.ScxRecord(
+                affectedRecords = listOf(dataRecord),
+                recordsToFinalize = listOf(dataRecord),
+                recordToModify = null,
+                fieldToModify = -1,
+                newValue = null,
+                oldValue = null,
+                state = DataRecord.ScxRecord.ScxState.IN_PROGRESS,
+                infoFields = listOf(DataRecord.defaultBarrierInfoValue)
+            )
+
+        // simulate intersecting case
+        dataRecord.marked = true
+
+        Assert.assertTrue(casScxRecord(dataRecord, DataRecord.defaultBarrierInfoValue, scxRecord))
+
+        val llxRecord =
+            runBlocking {
+                DataRecord.executeLinkedOperations {
+                    helper.loadLinkExtended(dataRecord)
+                }
+            }
+
+        Assert.assertTrue(llxRecord is DataRecord.LoadLinkResult.Finalized)
+        Assert.assertTrue(scxRecord.allFrozen)
+        Assert.assertEquals(scxRecord.state, DataRecord.ScxRecord.ScxState.COMMITTED)
+    }
 
 
 }

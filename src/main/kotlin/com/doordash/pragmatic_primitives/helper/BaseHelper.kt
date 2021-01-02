@@ -54,6 +54,11 @@ abstract class BaseHelper {
         return if (
             (
                 recordInfo.state == DataRecord.ScxRecord.ScxState.COMMITTED ||
+                    // this second case seems like it allows an LLX to return Finalized before the
+                    // modification of fld in the Scx record that was InProgress for this data record is complete
+                    // that seems like a somewhat significant gotcha for other uses of Finalized besides marking
+                    // nodes as stale
+                    // todo make sure that is the case and that's kosher
                     (recordInfo.state == DataRecord.ScxRecord.ScxState.IN_PROGRESS && help(recordInfo))
                 ) &&
             marked1
@@ -107,6 +112,7 @@ abstract class BaseHelper {
                 fieldToModify = fieldToModify,
                 newValue = newValue,
                 oldValue = oldFieldToModifyValue,
+                state = DataRecord.ScxRecord.ScxState.IN_PROGRESS,
                 infoFields = infoFields
             )
         )
