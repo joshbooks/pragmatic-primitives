@@ -11,17 +11,10 @@ import org.junit.Test
 import java.util.concurrent.atomic.AtomicReferenceArray
 
 @ExperimentalStdlibApi
-class BasicFunctionalityTest {
-
-
-    private val helpers = listOf(OriginalHelper /*, WorkStealingHelper */)
+class BasicFunctionalityTest: BaseHelperTest() {
 
     @Test
     fun testThatLLXWorksAtAll() {
-        helpers.forEach { testThatLLXWorksAtAllWithHelper(it) }
-    }
-
-    private fun testThatLLXWorksAtAllWithHelper(helper: BaseHelper) {
         val testRecord = provideBasicDataRecord()
 
         val llResult =
@@ -41,10 +34,6 @@ class BasicFunctionalityTest {
 
     @Test
     fun testThatSCXWorksAtAll() {
-        helpers.forEach { testThatSCXWorksAtAllWithHelper(it) }
-    }
-
-    private fun testThatSCXWorksAtAllWithHelper(helper: BaseHelper) {
         val testRecord = provideBasicDataRecord()
 
         val llResult =
@@ -72,11 +61,6 @@ class BasicFunctionalityTest {
 
     @Test
     fun testThatSCXFinalizeWorksAtAll() {
-        helpers.forEach { testThatSCXFinalizeWorksAtAllWithHelper(it) }
-    }
-
-    private fun testThatSCXFinalizeWorksAtAllWithHelper(helper: BaseHelper) {
-
         val testRecord = provideBasicDataRecord()
 
         val llResult =
@@ -101,10 +85,6 @@ class BasicFunctionalityTest {
 
     @Test
     fun testThatSCXFailsAfterFinalizedLLX() {
-        helpers.forEach { testThatSCXFailsAfterFinalizedLLXWithHelper(it) }
-    }
-
-    fun testThatSCXFailsAfterFinalizedLLXWithHelper(helper: BaseHelper) {
         val testRecord = provideBasicDataRecord()
 
         val llResult =
