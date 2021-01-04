@@ -99,6 +99,9 @@ class DataRecord(
         // in the tooManyCooksInTheKitchen loop
         val threadsHelping = AtomicInteger(0)
 
+        // todo might make sense to use a jctools ConcurrentAutoTable here as well
+        val threadsCompleted = AtomicInteger(0)
+
         enum class ScxState {
             IN_PROGRESS,
             COMMITTED,

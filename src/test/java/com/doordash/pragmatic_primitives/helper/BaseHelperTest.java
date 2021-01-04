@@ -13,6 +13,6 @@ public abstract class BaseHelperTest {
 
     @Parameterized.Parameters
     public static Collection<BaseHelper> getHelpers() {
-        return Arrays.asList(OriginalHelper.INSTANCE /*, WorkStealingHelper */);
+        return Arrays.asList(OriginalHelper.INSTANCE, WorkStealingHelper.INSTANCE);
     }
 }
