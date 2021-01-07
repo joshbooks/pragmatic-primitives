@@ -1,6 +1,9 @@
 # pragmatic-primitives
 A cooperative multithreading library based on work by Trevor Brown et al.
 
+[![GitHub Super-Linter](https://github.com/joshbooks/pragmatic-primitives/workflows/Lint%20Code%20Base/badge.svg)](https://github.com/marketplace/actions/super-linter)
+
+
 Trevor Brown, Faith Ellen, and Eric Ruppert wrote a rather wonderful paper establishing extensions to the apparently 
 well known and much celebrated LL and SC operations (I hadn't heard of them before but it turns out they're kind of a big deal).
 It's an awesome paper and the code they wrote enabled a non-blocking tree implementation that beats the pants off
