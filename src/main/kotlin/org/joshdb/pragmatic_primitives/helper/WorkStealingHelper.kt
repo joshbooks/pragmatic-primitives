@@ -180,7 +180,7 @@ object WorkStealingHelper : BaseHelper() {
 
       scxRecord.recordToModify
           ?.mutableFields
-          ?.compareAndExchange(scxRecord.fieldToModify, scxRecord.oldValue, scxRecord.newValue)
+          ?.compareAndSet(scxRecord.fieldToModify, scxRecord.oldValue, scxRecord.newValue)
 
       scxRecord.state = DataRecord.ScxRecord.ScxState.COMMITTED
       return true
