@@ -1,5 +1,5 @@
 # pragmatic-primitives
-A cooperative multithreading library based on work by Trevor Brown et al.
+A cooperative multithreading library based on [work by Trevor Brown, Faith Ellen, and Eric Ruppert](https://www.cs.toronto.edu/~tabrown/scx/fullpaper.pdf)
 
 Trevor Brown, Faith Ellen, and Eric Ruppert wrote a rather wonderful paper establishing extensions to the apparently 
 well known and much celebrated LL and SC operations (I hadn't heard of them before but it turns out they're kind of a big deal).
